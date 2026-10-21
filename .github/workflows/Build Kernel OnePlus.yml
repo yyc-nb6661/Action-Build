@@ -671,6 +671,16 @@ jobs:
           curl -LSs "https://raw.githubusercontent.com/pershoot/KernelSU-Next/refs/heads/${KSU_MANAGER_BRANCH}/kernel/setup.sh" | bash -s "$KSU_BUILTIN_BRANCH"
           cd ./KernelSU-Next
 
+          # clone 只拿默认分支，必须显式 fetch 目标分支再切换
+          echo "=== 当前分支: $(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown) ==="
+          if ! git rev-parse --verify "$KSU_BUILTIN_BRANCH" >/dev/null 2>&1; then
+            git fetch origin "$KSU_BUILTIN_BRANCH" --depth=50
+          fi
+          git checkout "$KSU_BUILTIN_BRANCH"
+          echo "=== 切换后: $(git rev-parse --abbrev-ref HEAD) @ $(git rev-parse --short HEAD) ==="
+          echo "=== Kconfig 是否含 KSU_SUSFS ==="
+          grep -c "config KSU_SUSFS" kernel/Kconfig || echo "0 (branch wrong)"
+
           if [[ -n "$MANUAL_HASH" ]]; then
             git fetch origin "$KSU_BUILTIN_BRANCH" --depth=50
             git checkout "$MANUAL_HASH"
