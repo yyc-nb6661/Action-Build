@@ -683,30 +683,35 @@ jobs:
 
           # 关键：该仓库 Kconfig 使用 CRLF，kconfig 解析器会把 \r 当作符号名的一部分，
           # 导致 depends on THREAD_INFO_IN_TASK 找不到依赖而丢弃 CONFIG_KSU_SUSFS
-          echo "=== 转换 CRLF -> LF ==="
-          find kernel -name "Kconfig*" -type f -exec sed -i 's/\r$//' {} +
-          file kernel/Kconfig
-          # 彻底删除 SUSFS 区块内的所有 depends，让它无条件可用
-          awk '
-            /^config KSU_SUSFS/ {insus=1}
-            insus && /^[[:space:]]*depends on/ {next}
-            /^[[:space:]]*help/ {insus=0}
-            {print}
-          ' kernel/Kconfig > kernel/Kconfig.new && mv kernel/Kconfig.new kernel/Kconfig
-          echo "=== 处理后 ==="
-          sed -n '/config KSU_SUSFS$/,+5p' kernel/Kconfig
-
-          if [[ -n "$MANUAL_HASH" ]]; then
-            git fetch origin "$KSU_BUILTIN_BRANCH" --depth=50
-            git checkout "$MANUAL_HASH"
-          fi
-
-          KSU_VERSION=$(expr $(curl -sI "https://api.github.com/repos/pershoot/KernelSU-Next/commits?sha=${KSU_MANAGER_BRANCH}&per_page=1" | grep -i "link:" | sed -n 's/.*page=\([0-9]*\)>; rel="last".*/\1/p') "+" 30000)
-          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-          sed -i "s/KSU_VERSION_FALLBACK := 1/KSU_VERSION_FALLBACK := $KSU_VERSION/g" kernel/Kbuild
-          KSU_GIT_TAG=$(curl -sL "https://api.github.com/repos/KernelSU-Next/KernelSU-Next/tags" | grep -o '"name": *"[^"]*"' | head -n 1 | sed 's/"name": "//;s/"//')
-          sed -i "s/KSU_VERSION_TAG_FALLBACK := v0.0.1/KSU_VERSION_TAG_FALLBACK := $KSU_GIT_TAG/g" kernel/Kbuild
-
+          echo "=== 用干净 LF 版本替换 SUSFS Kconfig 块 ==="
+          python3 - <<'PYEOF'
+import base64, re
+BLOCK = base64.b64decode("bWVudSAiS2VybmVsU1UgLSBTVVNGUyIKY29uZmlnIEtTVV9TVVNGUwoJYm9vbCAiS2VybmVsU1UgYWRkb24gLSBTVVNGUyIKCWRlcGVuZHMgb24gS1NVCglkZXBlbmRzIG9uIFRIUkVBRF9JTkZPX0lOX1RBU0sKCWRlZmF1bHQgeQoJaGVscAoJICBQYXRjaCBhbmQgRW5hYmxlIFNVU0ZTIHRvIGtlcm5lbCB3aXRoIEtlcm5lbFNVLgoKY29uZmlnIEtTVV9TVVNGU19TVVNfUEFUSAoJYm9vbCAiRW5hYmxlIHRvIGhpZGUgc3VzcGljaW91cyBwYXRoIgoJZGVwZW5kcyBvbiBLU1VfU1VTRlMKCWRlZmF1bHQgeQoJaGVscAoJICAtIEFsbG93IGhpZGluZyB0aGUgdXNlci1kZWZpbmVkIHBhdGggYW5kIGFsbCBpdHMgc3ViLXBhdGhzIGZyb20gdmFyaW91cyBzeXN0ZW0gY2FsbHMuCgkgIC0gVXNlICJhZGRfc3VzX3BhdGhfbG9vcCIgaW5zdGVhZCBvZiAiYWRkX3N1c19wYXRoIiBpZiB0aGUgdXNlci1kZWZpbmVkIHBhdGggaXMgZnJlcXVlbnRseSBtb2RpZmllZC4KCSAgLSBVc2Ugd2l0aCBjYXV0aW91cyBhcyBpdCBtYXkgY2F1c2UgcGVyZm9ybWFuY2UgbG9zcyBhbmQgd2lsbCBiZSB2dWxuZXJhYmxlIHRvIHNpZGUgY2hhbm5lbCBhdHRhY2tzLAoJCWp1c3QgZGlzYWJsZSB0aGlzIGZlYXR1cmUgaWYgaXQgZG9lc24ndCB3b3JrIGZvciB5b3Ugb3IgeW91IGRvbid0IG5lZWQgaXQgYXQgYWxsLgoJICAtIEVmZmVjdGl2ZSBvbmx5IG9uIHp5Z290ZSBzcGF3bmVkIHVzZXIgYXBwIHByb2Nlc3Mgd2l0aCB1aWQgPj0gMTAwMDAuCgpjb25maWcgS1NVX1NVU0ZTX1NVU19NT1VOVAoJYm9vbCAiRW5hYmxlIHRvIGhpZGUgc3VzcGljaW91cyBtb3VudHMiCglkZXBlbmRzIG9uIEtTVV9TVVNGUwoJZGVmYXVsdCB5CgloZWxwCgkgIC0gQXV0b21hdGljYWxseSBhc3NpZ24gZmFrZSBtbnRfaWQgYW5kIGZha2UgbW50X2dyb3VwX2lkIGZvciBtb3VudHMgbW91bnRlZCBieSBrc3UgcHJvY2VzcyB1bnRpbCAvc2RjYXJkIGlzICBkZWNyeXB0ZWQsIHRoaXMgaXMgdG8gZXZhZGUgZnJvbSBtbnRfaWQvbW50X2dyb3VwX2lkIGdhcCBkZXRlY3Rpb25zLgoJICAtIEFsbG93IGhpZGluZyBhbGwgc3VzIG1vdW50cyBmcm9tIC9wcm9jL3NlbGYvW21vdW50c3xtb3VudGluZm98bW91bnRzdGF0XSBmb3Igbm9uLXN1IHByb2Nlc3Nlcy4KCmNvbmZpZyBLU1VfU1VTRlNfU1VTX0tTVEFUCglib29sICJFbmFibGUgdG8gc3Bvb2Ygc3VzcGljaW91cyBrc3RhdCIKCWRlcGVuZHMgb24gS1NVX1NVU0ZTCglkZWZhdWx0IHkKCWhlbHAKCSAgLSBBbGxvdyBzcG9vZmluZyB0aGUga3N0YXQgb2YgdXNlci1kZWZpbmVkIGZpbGUvZGlyZWN0b3J5LgoJICAtIEVmZmVjdGl2ZSBvbmx5IG9uIHp5Z290ZSBzcGF3bmVkIHVzZXIgYXBwIHByb2Nlc3Mgd2l0aCB1aWQgPj0gMTAwMDAuCgpjb25maWcgS1NVX1NVU0ZTX1NQT09GX1VOQU1FCglib29sICJFbmFibGUgdG8gc3Bvb2YgdW5hbWUiCglkZXBlbmRzIG9uIEtTVV9TVVNGUwoJZGVmYXVsdCB5CgloZWxwCgkgIC0gQWxsb3cgc3Bvb2ZpbmcgdGhlIHN0cmluZyByZXR1cm5lZCBieSB1bmFtZSBzeXNjYWxsIHRvIHVzZXItZGVmaW5lZCBzdHJpbmcuCgkgIC0gRWZmZWN0aXZlIG9uIGFsbCBwcm9jZXNzZXMuCgpjb25maWcgS1NVX1NVU0ZTX0VOQUJMRV9MT0cKCWJvb2wgIkVuYWJsZSBsb2dnaW5nIHN1c2ZzIGxvZyB0byBrZXJuZWwiCglkZXBlbmRzIG9uIEtTVV9TVVNGUwoJZGVmYXVsdCB5CgloZWxwCgkgIC0gQWxsb3cgbG9nZ2luZyBzdXNmcyBsb2cgdG8ga2VybmVsLCB1bmNoZWNrIGl0IHRvIGNvbXBsZXRlbHkgZGlzYWJsZSBhbGwgc3VzZnMgbG9nLgoKY29uZmlnIEtTVV9TVVNGU19ISURFX0tTVV9TVVNGU19TWU1CT0xTCglib29sICJFbmFibGUgdG8gYXV0b21hdGljYWxseSBoaWRlIGtzdSBhbmQgc3VzZnMgc3ltYm9scyBmcm9tIC9wcm9jL2thbGxzeW1zIgoJZGVwZW5kcyBvbiBLU1VfU1VTRlMKCWRlZmF1bHQgeQoJaGVscAoJICAtIEF1dG9tYXRpY2FsbHkgaGlkZSBrc3UgYW5kIHN1c2ZzIHN5bWJvbHMgZnJvbSAnL3Byb2Mva2FsbHN5bXMnLgoJICAtIEVmZmVjdGl2ZSBvbiBhbGwgcHJvY2Vzc2VzLgoKY29uZmlnIEtTVV9TVVNGU19TUE9PRl9DTURMSU5FX09SX0JPT1RDT05GSUcKCWJvb2wgIkVuYWJsZSB0byBzcG9vZiAvcHJvYy9ib290Y29uZmlnIChna2kpIG9yIC9wcm9jL2NtZGxpbmUgKG5vbi1na2kpIgoJZGVwZW5kcyBvbiBLU1VfU1VTRlMKCWRlZmF1bHQgeQoJaGVscAoJICAtIFNwb29mIHRoZSBvdXRwdXQgb2YgL3Byb2MvYm9vdGNvbmZpZyAoZ2tpKSBvciAvcHJvYy9jbWRsaW5lIChub24tZ2tpKSB3aXRoIGEgdXNlci1kZWZpbmVkIGZpbGUuCgkgIC0gRWZmZWN0aXZlIG9uIGFsbCBwcm9jZXNzZXMuCgpjb25maWcgS1NVX1NVU0ZTX09QRU5fUkVESVJFQ1QKCWJvb2wgIkVuYWJsZSB0byByZWRpcmVjdCBhIHBhdGggdG8gYmUgb3BlbmVkIHdpdGggYW5vdGhlciBwYXRoIgoJZGVwZW5kcyBvbiBLU1VfU1VTRlMKCWRlZmF1bHQgeQoJaGVscAoJICAtIEFsbG93IHJlZGlyZWN0aW5nIGEgdGFyZ2V0IHBhdGggdG8gYmUgb3BlbmVkIHdpdGggYW5vdGhlciB1c2VyLWRlZmluZWQgcGF0aC4KCSAgLSBCb3RoIHRhcmdldCBwYXRoIGFuZCByZWRpcmVjdGVkIHBhdGggbXVzdCBiZSBleGlzdGVkIGJlZm9yZSB0aGV5IGNhbiBiZSBhZGRlZCB0byB0aGUga2VybmVsLgoJICAtIFVzZXJzIGhhdmUgdG8gdGFrZSBjYXJlIG9mIHRoZSBzZWxpbnV4IHBlcm1pc3Npb24gb2YgYm90aCB0YXJnZXQgcGF0aCBhbmQgcmVkaXJlY3RlZCBwYXRoIGJ5IHRoZW1zZWx2ZXMuCgkgIC0gT1BFTl9SRURJUkVDVCBkb2VzIG5vdCBieXBhc3MgZGV0ZWN0aW9ucywgYnV0IHVzZXJzIG1heSB0cnkgb3RoZXIgZmVhdHVyZSBsaWtlIFNVU19LU1RBVCB0byBieXBhc3Mgc29tZSBvZiB0aGVtLgoJICAtIEVmZmVjdGl2ZSBvbmx5IG9uIHByb2Nlc3NlcyB3aXRoIHByZS1kZWZpbmVkIHVpZCBzY2hlbWUuCgpjb25maWcgS1NVX1NVU0ZTX1NVU19NQVAKCWJvb2wgIkVuYWJsZSB0byBoaWRlIHNvbWUgbW1hcHBlZCByZWFsIGZpbGUgZnJvbSBkaWZmZXJlbnQgcHJvYyBtYXBzIGludGVyZmFjZXMiCglkZXBlbmRzIG9uIEtTVV9TVVNGUwoJZGVmYXVsdCB5CgloZWxwCgkgIC0gQWxsb3cgaGlkaW5nIG1tYXBwZWQgcmVhbCBmaWxlIGZyb20gL3Byb2MvPHBpZD4vW21hcHN8c21hcHN8c21hcHNfcm9sbHVwfG1hcF9maWxlc3xtZW18cGFnZW1hcF0KCSAgLSBJdCBkb2VzIE5PVCBzdXBwb3J0IGhpZGluZyBmb3IgYW5vbiBtZW1vcnkuCgkgIC0gSXQgZG9lcyBOT1QgaGlkZSBhbnkgaW5saW5lIGhvb2tzIG9yIHBsdCBob29rcyBjYXVzZSBieSB0aGUgaW5qZWN0ZWQgbGlicmFyeSBpdHNlbGYuCgkgIC0gSXQgbWF5IG5vdCBiZSBhYmxlIHRvIGV2YWRlIGRldGVjdGlvbnMgYnkgYXBwcyB0aGF0IGltcGxlbWVudCBhIGdvb2QgaW5qZWN0aW9uIGRldGVjdGlvbi4KCSAgLSBFZmZlY3RpdmUgb25seSBvbiB6eWdvdGUgc3Bhd25lZCB1bW91bnRlZCB1c2VyIGFwcCBwcm9jZXNzID49IDEwMDAwLgoKZW5kbWVudQ==").decode()
+p = 'kernel/Kconfig'
+s = open(p, encoding='utf-8', errors='replace').read().replace('\r\n', '\n')
+i = s.find('menu "KernelSU - SUSFS"')
+if i >= 0:
+    depth = 0
+    out = []
+    for ln in s[i:].split('\n'):
+        st = ln.strip()
+        if st.startswith('menu'):
+            depth += 1
+        elif st.startswith('endmenu'):
+            depth -= 1
+        out.append(ln)
+        if depth == 0 and st.startswith('endmenu'):
+            break
+    consumed = len('\n'.join(out))
+    s = s[:i] + BLOCK + s[i+consumed:]
+else:
+    s = s.rstrip('\n') + '\n\n' + BLOCK + '\n'
+open(p, 'w', encoding='utf-8', newline='\n').write(s)
+print('Kconfig replaced, size:', len(s))
+PYEOF
+          echo "=== 替换后检查 ==="
+          grep -c "^config KSU_SUSFS" kernel/Kconfig
+          sed -n '/^config KSU_SUSFS$/,+4p' kernel/Kconfig
       - name: Apply Fake Patches
         if: ${{ github.event.inputs.SUSFS_META != '-1' }}
         run: |
