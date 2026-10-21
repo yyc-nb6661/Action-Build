@@ -1380,17 +1380,26 @@ jobs:
           fi
 
       - name: Verify SUSFS Build
+        if: always()
         run: |
-          echo "=== .config 中的 SUSFS ==="
-          CFG=$(find kernel_workspace -name ".config" -path "*/out/*" 2>/dev/null | head -1)
-          echo "config path: $CFG"
-          [ -n "$CFG" ] && grep "KSU_SUSFS" "$CFG" || echo "NOT FOUND IN .config"
-          echo "=== susfs.o 是否生成 ==="
-          find kernel_workspace -name "susfs.o" 2>/dev/null | head -3
-          echo "=== Image 中的 susfs 字符串 ==="
-          IMG=$(find kernel_workspace -name "Image" -path "*/out/*" 2>/dev/null | head -1)
+          C=./kernel_workspace/kernel_platform/common
+          echo "=== 1. fs/susfs.c 是否存在 ==="
+          ls -l $C/fs/susfs.c 2>/dev/null || echo "MISSING susfs.c"
+          echo "=== 2. fs/Makefile 是否有 susfs 规则 ==="
+          grep -n "susfs" $C/fs/Makefile 2>/dev/null || echo "NO RULE IN fs/Makefile"
+          echo "=== 3. .config 中的 KSU_SUSFS ==="
+          CFG=$(find ./kernel_workspace -name ".config" -path "*/out/*" 2>/dev/null | head -1)
+          echo "config: $CFG"
+          [ -n "$CFG" ] && grep -E "KSU_SUSFS|CONFIG_KSU=" "$CFG" || echo "NO CONFIG FILE"
+          echo "=== 4. out 目录里的 susfs 产物 ==="
+          find ./kernel_workspace -name "susfs*" 2>/dev/null | head -5 || echo "NO SUSFS ARTIFACTS"
+          echo "=== 5. Image 字符串 ==="
+          IMG=$(find ./kernel_workspace -name "Image" -path "*/out/*" 2>/dev/null | head -1)
           if [ -n "$IMG" ]; then
+            echo "Image: $IMG"
             strings "$IMG" 2>/dev/null | grep -c "susfs is initialized" || echo "0 hits"
+          else
+            echo "NO Image"
           fi
 
       - name: Make AnyKernel3
