@@ -1374,11 +1374,13 @@ jobs:
       - name: Verify SUSFS Build
         run: |
           echo "=== .config 中的 SUSFS ==="
-          grep "KSU_SUSFS" kernel_workspace/kernel_platform/out/.config 2>/dev/null || echo "NOT FOUND IN .config"
+          CFG=$(find kernel_workspace -name ".config" -path "*/out/*" 2>/dev/null | head -1)
+          echo "config path: $CFG"
+          [ -n "$CFG" ] && grep "KSU_SUSFS" "$CFG" || echo "NOT FOUND IN .config"
           echo "=== susfs.o 是否生成 ==="
-          find kernel_workspace/kernel_platform/out -name "susfs.o" 2>/dev/null | head -3 || echo "NO susfs.o"
+          find kernel_workspace -name "susfs.o" 2>/dev/null | head -3
           echo "=== Image 中的 susfs 字符串 ==="
-          IMG=$(find kernel_workspace/kernel_platform/out -name "Image" | head -1)
+          IMG=$(find kernel_workspace -name "Image" -path "*/out/*" 2>/dev/null | head -1)
           if [ -n "$IMG" ]; then
             strings "$IMG" 2>/dev/null | grep -c "susfs is initialized" || echo "0 hits"
           fi
