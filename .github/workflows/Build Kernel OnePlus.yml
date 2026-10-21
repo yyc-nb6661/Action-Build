@@ -1000,12 +1000,15 @@ jobs:
           fi
 
           # 去掉 SUSFS 的 depends 约束，避免 olddefconfig/syncconfig 判定依赖不满足而丢弃
-          KCFG=./kernel/Kconfig
-          if [ -f "$KCFG" ]; then
-            grep -q "THREAD_INFO_IN_TASK" "$KCFG" && sed -i '/depends on THREAD_INFO_IN_TASK/d' "$KCFG" && echo "[+] removed THREAD_INFO_IN_TASK dep from Kconfig"
-            echo "--- KSU_SUSFS block ---"
-            sed -n '/config KSU_SUSFS$/,+5p' "$KCFG"
-          fi
+          for KCFG in ./drivers/kernelsu/Kconfig ./kernel/Kconfig; do
+            [ -f "$KCFG" ] || continue
+            echo "--- $KCFG ---"
+            if grep -q "config KSU_SUSFS$" "$KCFG"; then
+              sed -i '/depends on THREAD_INFO_IN_TASK/d' "$KCFG"
+              echo "[+] stripped depends in $KCFG"
+              sed -n '/config KSU_SUSFS$/,+6p' "$KCFG"
+            fi
+          done
 
           # SUSFS配置
           if [ "${{ github.event.inputs.SUSFS_META }}" != "-1" ]; then
