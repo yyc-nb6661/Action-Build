@@ -1001,6 +1001,7 @@ jobs:
 
           # SUSFS配置
           if [ "${{ github.event.inputs.SUSFS_META }}" != "-1" ]; then
+            set_config "CONFIG_THREAD_INFO_IN_TASK=y"
             set_config "CONFIG_KSU_SUSFS=y"
             set_config "CONFIG_KSU_SUSFS_SUS_PATH=y"
             set_config "CONFIG_KSU_SUSFS_SUS_MAP=y"
