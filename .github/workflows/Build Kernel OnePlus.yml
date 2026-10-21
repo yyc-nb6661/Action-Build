@@ -686,7 +686,15 @@ jobs:
           echo "=== 转换 CRLF -> LF ==="
           find kernel -name "Kconfig*" -type f -exec sed -i 's/\r$//' {} +
           file kernel/Kconfig
-          sed -n '/config KSU_SUSFS$/,+4p' kernel/Kconfig
+          # 彻底删除 SUSFS 区块内的所有 depends，让它无条件可用
+          awk '
+            /^config KSU_SUSFS/ {insus=1}
+            insus && /^[[:space:]]*depends on/ {next}
+            /^[[:space:]]*help/ {insus=0}
+            {print}
+          ' kernel/Kconfig > kernel/Kconfig.new && mv kernel/Kconfig.new kernel/Kconfig
+          echo "=== 处理后 ==="
+          sed -n '/config KSU_SUSFS$/,+5p' kernel/Kconfig
 
           if [[ -n "$MANUAL_HASH" ]]; then
             git fetch origin "$KSU_BUILTIN_BRANCH" --depth=50
@@ -1418,7 +1426,7 @@ jobs:
           echo "=== 3. .config 中的 KSU_SUSFS ==="
           CFG=$(find ./kernel_workspace -name ".config" -path "*/out/*" 2>/dev/null | head -1)
           echo "config: $CFG"
-          [ -n "$CFG" ] && grep -E "KSU_SUSFS|CONFIG_KSU=" "$CFG" || echo "NO CONFIG FILE"
+          [ -n "$CFG" ] && grep -E "KSU_SUSFS|CONFIG_KSU=|THREAD_INFO_IN_TASK" "$CFG" || echo "NO CONFIG FILE"
           echo "=== 4. out 目录里的 susfs 产物 ==="
           find ./kernel_workspace -name "susfs*" 2>/dev/null | head -5 || echo "NO SUSFS ARTIFACTS"
           echo "=== 5. Image 字符串 ==="
