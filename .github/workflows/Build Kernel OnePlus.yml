@@ -1356,6 +1356,14 @@ jobs:
           fi
 
           make O=out "${MAKE_ARGS[@]}" olddefconfig --no-print-directory
+
+          # 强制启用 SUSFS（绕过 Kconfig 依赖判定）
+          for k in KSU KSU_SUSFS KSU_SUSFS_SUS_PATH KSU_SUSFS_SUS_MAP KSU_SUSFS_SUS_MOUNT KSU_SUSFS_SUS_KSTAT KSU_SUSFS_SPOOF_UNAME KSU_SUSFS_ENABLE_LOG KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG KSU_SUSFS_OPEN_REDIRECT; do
+            scripts/config --file out/.config -e "$k"
+          done
+          echo "=== 强制后的 .config ==="
+          grep -E "CONFIG_KSU_SUSFS|CONFIG_KSU=" out/.config || echo "STILL MISSING"
+
           make -j"$(nproc --all)" O=out "${MAKE_ARGS[@]}"
           ccache -s
 
