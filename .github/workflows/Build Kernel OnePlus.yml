@@ -469,6 +469,20 @@ jobs:
           sed -i -e '/prebuilts\/asuite"/{/ks-kernel\.lnx\.5\.0\.r3-rel/d}' -e '/tools\/tradefederation\/prebuilts"/{/ks-kernel\.lnx\.5\.0\.r3-rel/d}' ".repo/manifests/${FILE}.xml"
           repo sync -c -j$(nproc) --no-clone-bundle --no-tags --force-sync
 
+          # 固定内核源码到 2025-12-26（对应 android12-9 KMI），与 40283 同期
+          pin_repo() {
+            d="$1"; c="$2"
+            [ -d "$d/.git" ] || return 0
+            ( cd "$d" || return 0
+              git fetch --depth=200 origin 2>/dev/null || true
+              git checkout -q "$c" 2>/dev/null && echo "[PIN] $d -> $c ($(git rev-parse --short HEAD))" || echo "[PIN-FAIL] $d $c"
+            )
+          }
+          pin_repo kernel_platform/common 82e468465d
+          pin_repo kernel_platform/msm-kernel e7b383d946
+          echo "=== 固定后检查 KMI ==="
+          grep -rhoE "android12-[0-9]+" kernel_platform/common/Makefile kernel_platform/common/build.config* 2>/dev/null | sort -u | head -3 || true
+
           KERNEL_REPOS=""
           KERNEL_REPOS_PATH=$(find . -type f -name "build.config.msm.common" | head -n 1)
           if [[ -n "$KERNEL_REPOS_PATH" ]]; then
