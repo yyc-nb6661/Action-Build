@@ -468,10 +468,20 @@ jobs:
           repo init -u "$BASE_URL" -b "$MANIFEST_BRANCH" -m "${FILE}.xml" --depth=1 --no-clone-bundle --no-tags
           sed -i -e '/prebuilts\/asuite"/{/ks-kernel\.lnx\.5\.0\.r3-rel/d}' -e '/tools\/tradefederation\/prebuilts"/{/ks-kernel\.lnx\.5\.0\.r3-rel/d}' ".repo/manifests/${FILE}.xml"
 
-          # 只固定 common 仓库的 revision（KMI 由 common 决定）
-          sed -i '/android_kernel_common_oneplus_sm8475/ s|revision="[^"]*"|revision="82e468465d94c23aa497567c1e3e8d886e917e50"|' ".repo/manifests/${FILE}.xml"
-          echo "=== manifest 改写结果 ==="
-          grep -oE 'name="android_kernel_common_oneplus_sm8475"[^>]*' ".repo/manifests/${FILE}.xml" | head -2
+          # 直接在 repo sync 后 checkout 目标 commit（不依赖 manifest，100% 生效）
+          pin_src() {
+            d="$1"; c="$2"
+            [ -d "$d/.git" ] || return 0
+            ( cd "$d" || return 0
+              if git fetch --depth=1 origin "$c" 2>/dev/null && git checkout -q FETCH_HEAD 2>/dev/null; then
+                echo "[PIN-OK] $d -> $c ($(git rev-parse --short HEAD))"
+              else
+                echo "[PIN-FAIL] $d $c"
+              fi
+            )
+          }
+          pin_src kernel_platform/common 82e468465d94c23aa497567c1e3e8d886e917e50
+          pin_src kernel_platform/msm-kernel e7b383d9467e590fa0eaa0fda9989320e1057209
           repo sync -c -j$(nproc) --no-clone-bundle --no-tags --force-sync
 
           # 固定内核源码到 2025-12-26（对应 android12-9 KMI），与 40283 同期
@@ -795,6 +805,13 @@ jobs:
             cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.KANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
             cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
             cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+
+          # 阉割 susfs_sdcard_monitor（ColorOS 16 上会 panic）
+          if [ -f ./common/fs/susfs.c ]; then
+            sed -i 's|kthread_run(susfs_sdcard_monitor_fn, NULL, "susfs_sdcard_monitor")|NULL /* disabled */|' ./common/fs/susfs.c
+            echo "=== sdcard_monitor 阉割结果 ==="
+            grep -c "susfs_sdcard_monitor_fn, NULL" ./common/fs/susfs.c || echo "0 (已阉割)"
+          fi
           fi
 
           if [[ "${{ github.event.inputs.ZRAM }}" == 1* ]]; then
