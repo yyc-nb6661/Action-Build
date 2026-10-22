@@ -817,6 +817,15 @@ jobs:
             echo "=== sdcard_monitor 阉割结果 ==="
             grep -c "susfs_sdcard_monitor_fn, NULL" ./common/fs/susfs.c || echo "0 (已阉割)"
           fi
+
+          # 强制确保 fs/Makefile 编译 susfs.o（SUSFS 2.1.0+ 的 patch 会被 Fake Patches revert）
+          if [ -f ./common/fs/susfs.c ] && ! grep -q "susfs.o" ./common/fs/Makefile 2>/dev/null; then
+            echo "obj-\$(CONFIG_KSU_SUSFS) += susfs.o" >> ./common/fs/Makefile
+            echo "=== fs/Makefile 已强制添加 susfs.o ==="
+          else
+            echo "=== fs/Makefile 已含 susfs.o 或 susfs.c 不存在 ==="
+          fi
+          grep -n "susfs" ./common/fs/Makefile 2>/dev/null | head -3
           fi
 
           if [[ "${{ github.event.inputs.ZRAM }}" == 1* ]]; then
