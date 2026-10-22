@@ -468,27 +468,10 @@ jobs:
           repo init -u "$BASE_URL" -b "$MANIFEST_BRANCH" -m "${FILE}.xml" --depth=1 --no-clone-bundle --no-tags
           sed -i -e '/prebuilts\/asuite"/{/ks-kernel\.lnx\.5\.0\.r3-rel/d}' -e '/tools\/tradefederation\/prebuilts"/{/ks-kernel\.lnx\.5\.0\.r3-rel/d}' ".repo/manifests/${FILE}.xml"
 
-          # 直接把 manifest 里的分支 revision 换成固定 commit（最可靠的方式）
-          PIN_COMMON="${PIN_COMMON:-82e468465d}"
-          PIN_MSM="${PIN_MSM:-e7b383d946}"
-          echo "=== 改写 manifest revision: common=$PIN_COMMON msm=$PIN_MSM ==="
-          sed -i "s|revision=\"oneplus/sm8475_b_16\.0\.0_ace_2\"|revision=\"$PIN_COMMON\"|g" ".repo/manifests/${FILE}.xml"
-          # msm-kernel 单独用另一个 commit
-          python3 - <<'PYEOF' || true
-import re
-p = ".repo/manifests/oneplus_ace2_b.xml"
-s = open(p).read()
-# 把 msm-kernel project 的 revision 单独替换
-def fix(m):
-    blk = m.group(0)
-    if 'msm-kernel' in blk:
-        blk = re.sub(r'revision="[^"]*"', 'revision="e7b383d946"', blk)
-    return blk
-s = re.sub(r'<project[^>]*>', fix, s, flags=re.S)
-open(p,'w').write(s)
-print("manifest patched")
-PYEOF
-          grep -E 'name="android_kernel' ".repo/manifests/${FILE}.xml" | head -3
+          # 只固定 common 仓库的 revision（KMI 由 common 决定）
+          sed -i '/android_kernel_common_oneplus_sm8475/ s|revision="[^"]*"|revision="82e468465d"|' ".repo/manifests/${FILE}.xml"
+          echo "=== manifest 改写结果 ==="
+          grep -oE 'name="android_kernel_common_oneplus_sm8475"[^>]*' ".repo/manifests/${FILE}.xml" | head -2
           repo sync -c -j$(nproc) --no-clone-bundle --no-tags --force-sync
 
           # 固定内核源码到 2025-12-26（对应 android12-9 KMI），与 40283 同期
