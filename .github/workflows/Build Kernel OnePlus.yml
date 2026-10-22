@@ -483,10 +483,15 @@ jobs:
           pin_src kernel_platform/common 82e468465d94c23aa497567c1e3e8d886e917e50
           pin_src kernel_platform/msm-kernel e7b383d9467e590fa0eaa0fda9989320e1057209
 
-          # 第三个仓库：vendor 内核模块（KMI 由它决定！path="./" 不能用 repo forall）
-          sed -i '/android_kernel_modules_and_devicetree_oneplus_sm8475/ s|revision="[^"]*"|revision="44ac7bb63dc960b218de1bdf71b72fa0e415548a"|' ".repo/manifests/${FILE}.xml"
-          echo "=== vendor 固定结果 ==="
-          grep -c 'revision="44ac7bb63dc960b218de1bdf71b72fa0e415548a"' ".repo/manifests/${FILE}.xml" 
+          # 第三个仓库：vendor 内核模块（KMI 由它决定！在 repo 根目录，直接 git fetch）
+          cd "$GITHUB_WORKSPACE/kernel_workspace"
+          if [ -e .git ]; then
+            git fetch --depth=1 origin 44ac7bb63dc960b218de1bdf71b72fa0e415548a 2>/dev/null && git checkout -q FETCH_HEAD 2>/dev/null && echo "[PIN-OK] vendor-modules -> 44ac7bb ($(git rev-parse --short HEAD))" || echo "[PIN-FAIL] vendor-modules"
+          else
+            echo "[WARN] vendor-modules .git not found, trying .repo path"
+            find .repo -maxdepth 3 -name "*.git" -type d 2>/dev/null | head -3
+          fi
+          cd "$GITHUB_WORKSPACE/kernel_workspace/kernel_platform" 
           repo sync -c -j$(nproc) --no-clone-bundle --no-tags --force-sync
 
           # 固定内核源码到 2025-12-26（对应 android12-9 KMI），与 40283 同期
